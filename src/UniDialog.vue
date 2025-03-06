@@ -26,36 +26,14 @@ export interface UniDialogSlotsType extends /* @vue-ignore */ ElDialogSlotsType 
 // 也会把 "ElDialog" 组件的props和新赋予的props分开
 export interface UniDialogPropsType extends /* @vue-ignore */ ElDialogPropsType {
   dialogRef?: ((ins: ElDialogInstanceType) => void) | Ref
-  // 放在这里重写，是为了处理响应式，否则在attrs中，不是响应式
-  // 如果不需要单独使用，直接透传，则无需单独处理
-  title?: ElDialogPropsType['title']
-  showClose?: ElDialogPropsType['showClose']
 }
 defineOptions({ name: 'UniDialog', inheritAttrs: false })
-const props = defineProps<UniDialogPropsType>()
-const dialogRef = shallowRef()
 const attrs: ElDialogPropsType = useAttrs()
+const _props = defineProps<UniDialogPropsType>()
+const props = useProxyProps(_props, attrs)
+const dialogRef = shallowRef()
 const slots = defineSlots<UniDialogSlotsType>()
 const dialogAttrs = computed(getDialogAttrs)
-function getDialogAttrs(): ElDialogPropsType {
-  // 整理所有的props数据
-  return {
-    // 注意这里的attrs是没有自动转驼峰的
-    // 如果需要用里面的值，需要自行转换
-    ...attrs,
-    ref(v: any) {
-      // 本地记录 "ElDialog" 组件实例
-      dialogRef.value = v
-      // 把 "ElDialog" 组件实例向外部透传
-      if (typeof props.dialogRef === 'function') {
-        props.dialogRef(v)
-      } else if (isRef(props.dialogRef)) {
-        props.dialogRef.value = v
-      }
-    },
-    showClose: false,
-  }
-}
 const headerSlot: typeof slots.header = (scoped) => {
   if (slots.header) {
     // 用户插槽优先
@@ -100,4 +78,47 @@ defineExpose({
     return dialogRef.value?.[key]
   },
 })
+function getDialogAttrs(): ElDialogPropsType {
+  // 整理 "ElDialog" 组件所有的props数据
+  return {
+    // 注意这里的attrs是没有自动转驼峰的
+    // 如果需要用里面的值，需要自行转换
+    ...attrs,
+    ref(v: any) {
+      // 本地记录 "ElDialog" 组件实例
+      dialogRef.value = v
+      // 把 "ElDialog" 组件实例向外部透传
+      if (typeof props.dialogRef === 'function') {
+        props.dialogRef(v)
+      } else if (isRef(props.dialogRef)) {
+        props.dialogRef.value = v
+      }
+    },
+    showClose: false,
+  }
+}
+
+function objKeyToHump(val: Record<string, any>): Record<string, any> {
+  // 统一转为驼峰格式
+  const newVal: Record<string, any> = {}
+  for (let k in val) {
+    const key = k.replace(/-(\w)/g, (_, c) => (c ? c.toUpperCase() : ''))
+    newVal[key] = val[k]
+  }
+  return newVal
+}
+function useProxyProps<T extends ReturnType<typeof defineProps>>(props: T, ...args: Record<string, any>[]): T {
+  // 代理props，attrs，因为attrs直接使用是非响应式的
+  const _props = computed(() => objKeyToHump(Object.assign({}, props, ...args)) as T)
+  const obj = new Proxy(_props.value, {
+    get(_, p) {
+      return Reflect.get(_props.value, p)
+    },
+    set() {
+      // 只读数据不能改
+      return true
+    },
+  })
+  return obj
+}
 </script>
